@@ -11,7 +11,11 @@ import (
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients/spreadsheets"
 	commonHTTP "github.com/ThreeDotsLabs/go-event-driven/common/http"
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,14 +25,74 @@ type TicketsConfirmationRequest struct {
 
 func main() {
 	log.Init(logrus.InfoLevel)
+	watermillLogger := log.NewWatermill(logrus.NewEntry(logrus.StandardLogger()))
 
 	clients, err := clients.NewClients(os.Getenv("GATEWAY_ADDR"), nil)
 	if err != nil {
 		panic(err)
 	}
 
-	w := NewWorker(clients)
-	go w.Run()
+	receiptsClient := NewReceiptsClient(clients)
+	spreadsheetsClient := NewSpreadsheetsClient(clients)
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: os.Getenv("REDIS_ADDR"),
+	})
+
+	pub, err := redisstream.NewPublisher(redisstream.PublisherConfig{
+		Client: rdb,
+	}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	receiptSub, err := redisstream.NewSubscriber(redisstream.SubscriberConfig{
+		Client:        rdb,
+		ConsumerGroup: "receipts",
+	}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	spreadsheetSub, err := redisstream.NewSubscriber(redisstream.SubscriberConfig{
+		Client:        rdb,
+		ConsumerGroup: "spreadsheets",
+	}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		messages, err := receiptSub.Subscribe(context.Background(), "issue-receipt")
+		if err != nil {
+			panic(err)
+		}
+
+		for msg := range messages {
+			err := receiptsClient.IssueReceipt(context.Background(), string(msg.Payload))
+			if err != nil {
+				msg.Nack()
+			} else {
+				msg.Ack()
+			}
+		}
+	}()
+
+	go func() {
+		messages, err := spreadsheetSub.Subscribe(context.Background(), "append-to-tracker")
+		if err != nil {
+			panic(err)
+		}
+
+		for msg := range messages {
+			err := spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{string(msg.Payload)})
+			if err != nil {
+				msg.Nack()
+			} else {
+				msg.Ack()
+			}
+		}
+	}()
 
 	e := commonHTTP.NewEcho()
 
@@ -40,8 +104,13 @@ func main() {
 		}
 
 		for _, ticket := range request.Tickets {
-			w.Send(Message{Task: TaskIssueReceipt, TicketID: ticket})
-			w.Send(Message{Task: TaskAppendToTracker, TicketID: ticket})
+			msg := message.NewMessage(watermill.NewUUID(), []byte(ticket))
+			if err := pub.Publish("issue-receipt", msg); err != nil {
+				return err
+			}
+			if err := pub.Publish("append-to-tracker", msg); err != nil {
+				return err
+			}
 		}
 
 		return c.NoContent(http.StatusOK)
