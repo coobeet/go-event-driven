@@ -27,8 +27,8 @@ func main() {
 		panic(err)
 	}
 
-	receiptsClient := NewReceiptsClient(clients)
-	spreadsheetsClient := NewSpreadsheetsClient(clients)
+	w := NewWorker(clients)
+	go w.Run()
 
 	e := commonHTTP.NewEcho()
 
@@ -40,15 +40,8 @@ func main() {
 		}
 
 		for _, ticket := range request.Tickets {
-			err = receiptsClient.IssueReceipt(c.Request().Context(), ticket)
-			if err != nil {
-				return err
-			}
-
-			err = spreadsheetsClient.AppendRow(c.Request().Context(), "tickets-to-print", []string{ticket})
-			if err != nil {
-				return err
-			}
+			w.Send(Message{Task: TaskIssueReceipt, TicketID: ticket})
+			w.Send(Message{Task: TaskAppendToTracker, TicketID: ticket})
 		}
 
 		return c.NoContent(http.StatusOK)
@@ -112,4 +105,58 @@ func (c SpreadsheetsClient) AppendRow(ctx context.Context, spreadsheetName strin
 	}
 
 	return nil
+}
+
+type Task int
+
+const (
+	TaskIssueReceipt Task = iota
+	TaskAppendToTracker
+)
+
+type Message struct {
+	Task     Task
+	TicketID string
+}
+
+type Worker struct {
+	queue              chan Message
+	receiptsClient     ReceiptsClient
+	spreadsheetsClient SpreadsheetsClient
+}
+
+func NewWorker(clients *clients.Clients) *Worker {
+	receiptsClient := NewReceiptsClient(clients)
+	spreadsheetsClient := NewSpreadsheetsClient(clients)
+	return &Worker{
+		queue:              make(chan Message, 100),
+		receiptsClient:     receiptsClient,
+		spreadsheetsClient: spreadsheetsClient,
+	}
+}
+
+func (w *Worker) Send(msg ...Message) {
+	for _, m := range msg {
+		w.queue <- m
+	}
+}
+
+func (w *Worker) Run() {
+	ctx := context.Background()
+	for msg := range w.queue {
+		switch msg.Task {
+		case TaskIssueReceipt:
+			// issue the receipt
+			if err := w.receiptsClient.IssueReceipt(ctx, msg.TicketID); err != nil {
+				logrus.WithError(err).Error("failed to add receipt for ticket")
+				w.Send(msg)
+			}
+		case TaskAppendToTracker:
+			// append to the tracker spreadsheet
+			if err := w.spreadsheetsClient.AppendRow(ctx, "tickets-to-print", []string{msg.TicketID}); err != nil {
+				logrus.WithError(err).Error("failed to append to tracker spreadsheet")
+				w.Send(msg)
+			}
+		}
+	}
 }
