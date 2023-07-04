@@ -19,6 +19,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	issueReceiptTopic    = "issue-receipt"
+	appendToTrackerTopic = "append-to-tracker"
+)
+
 type TicketsConfirmationRequest struct {
 	Tickets []string `json:"tickets"`
 }
@@ -62,35 +67,33 @@ func main() {
 		panic(err)
 	}
 
+	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	router.AddNoPublisherHandler(
+		issueReceiptTopic,
+		issueReceiptTopic,
+		receiptSub,
+		func(msg *message.Message) error {
+			return receiptsClient.IssueReceipt(context.Background(), string(msg.Payload))
+		},
+	)
+
+	router.AddNoPublisherHandler(
+		appendToTrackerTopic,
+		appendToTrackerTopic,
+		spreadsheetSub,
+		func(msg *message.Message) error {
+			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{string(msg.Payload)})
+		},
+	)
+
 	go func() {
-		messages, err := receiptSub.Subscribe(context.Background(), "issue-receipt")
+		err := router.Run(context.Background())
 		if err != nil {
 			panic(err)
-		}
-
-		for msg := range messages {
-			err := receiptsClient.IssueReceipt(context.Background(), string(msg.Payload))
-			if err != nil {
-				msg.Nack()
-			} else {
-				msg.Ack()
-			}
-		}
-	}()
-
-	go func() {
-		messages, err := spreadsheetSub.Subscribe(context.Background(), "append-to-tracker")
-		if err != nil {
-			panic(err)
-		}
-
-		for msg := range messages {
-			err := spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{string(msg.Payload)})
-			if err != nil {
-				msg.Nack()
-			} else {
-				msg.Ack()
-			}
 		}
 	}()
 
@@ -105,10 +108,10 @@ func main() {
 
 		for _, ticket := range request.Tickets {
 			msg := message.NewMessage(watermill.NewUUID(), []byte(ticket))
-			if err := pub.Publish("issue-receipt", msg); err != nil {
+			if err := pub.Publish(issueReceiptTopic, msg); err != nil {
 				return err
 			}
-			if err := pub.Publish("append-to-tracker", msg); err != nil {
+			if err := pub.Publish(appendToTrackerTopic, msg); err != nil {
 				return err
 			}
 		}
