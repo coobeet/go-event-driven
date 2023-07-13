@@ -124,6 +124,8 @@ func main() {
 		panic(err)
 	}
 
+	router.AddMiddleware(LoggingMiddleware())
+
 	router.AddNoPublisherHandler(
 		issueReceiptTopic,
 		ticketBookingConfirmedTopic,
@@ -354,4 +356,14 @@ func (c SpreadsheetsClient) AppendRow(ctx context.Context, spreadsheetName strin
 	}
 
 	return nil
+}
+
+func LoggingMiddleware() func(h message.HandlerFunc) message.HandlerFunc {
+	return func(next message.HandlerFunc) message.HandlerFunc {
+		return func(msg *message.Message) ([]*message.Message, error) {
+			logrus.WithField("message_uuid", msg.UUID).Info("Handling a message")
+
+			return next(msg)
+		}
+	}
 }

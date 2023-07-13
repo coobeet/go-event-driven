@@ -51,6 +51,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	router.AddMiddleware(middleware.CorrelationID)
 
 	rbd := redis.NewClient(&redis.Options{
