@@ -205,12 +205,20 @@ func main() {
 			return h(msg)
 		}
 	})
+
 	router.AddMiddleware(func(h message.HandlerFunc) message.HandlerFunc {
 		return func(msg *message.Message) ([]*message.Message, error) {
 			logger := log.FromContext(msg.Context())
-			logger.WithField("message_uuid", msg.UUID).Info("Handling a message")
+			logger = logger.WithField("message_uuid", msg.UUID)
 
-			return h(msg)
+			logger.Info("Handling a message")
+
+			msgs, err := h(msg)
+			if err != nil {
+				logger.WithError(err).Error("Message handling error")
+			}
+
+			return msgs, err
 		}
 	})
 
@@ -369,14 +377,4 @@ func (c SpreadsheetsClient) AppendRow(ctx context.Context, spreadsheetName strin
 	}
 
 	return nil
-}
-
-func LoggingMiddleware() func(h message.HandlerFunc) message.HandlerFunc {
-	return func(next message.HandlerFunc) message.HandlerFunc {
-		return func(msg *message.Message) ([]*message.Message, error) {
-			logrus.WithField("message_uuid", msg.UUID).Info("Handling a message")
-
-			return next(msg)
-		}
-	}
 }
