@@ -18,6 +18,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/labstack/echo/v4"
+	"github.com/lithammer/shortuuid/v3"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -76,7 +77,13 @@ func main() {
 	log.Init(logrus.InfoLevel)
 	watermillLogger := log.NewWatermill(logrus.NewEntry(logrus.StandardLogger()))
 
-	clients, err := clients.NewClients(os.Getenv("GATEWAY_ADDR"), nil)
+	clients, err := clients.NewClients(
+		os.Getenv("GATEWAY_ADDR"),
+		func(ctx context.Context, req *http.Request) error {
+			req.Header.Set("Correlation-ID", log.CorrelationIDFromContext(ctx))
+			return nil
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -119,92 +126,10 @@ func main() {
 		panic(err)
 	}
 
-	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
-	if err != nil {
-		panic(err)
-	}
-
-	router.AddMiddleware(LoggingMiddleware())
-
-	router.AddNoPublisherHandler(
-		issueReceiptTopic,
-		ticketBookingConfirmedTopic,
-		receiptSub,
-		func(msg *message.Message) error {
-			var payload TicketBookingConfirmed
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-				return err
-			}
-			return receiptsClient.IssueReceipt(context.Background(), IssueReceiptRequest{
-				TicketID: payload.TicketID,
-				Price: PriceMoney{
-					Amount:   payload.Price.Amount,
-					Currency: payload.Price.Currency,
-				},
-			})
-		},
-	)
-
-	router.AddNoPublisherHandler(
-		appendToTrackerTopic,
-		ticketBookingConfirmedTopic,
-		spreadsheetSub,
-		func(msg *message.Message) error {
-			var payload TicketBookingConfirmed
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-				return err
-			}
-			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{
-				payload.TicketID,
-				payload.CustomerEmail,
-				payload.Price.Amount,
-				payload.Price.Currency,
-			})
-		},
-	)
-
-	router.AddNoPublisherHandler(
-		"refund-spreadsheets",
-		ticketBookingCanceledTopic,
-		refundSpreadsheetSub,
-		func(msg *message.Message) error {
-			var payload TicketBookingCanceled
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-				return err
-			}
-			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-refund", []string{
-				payload.TicketID,
-				payload.CustomerEmail,
-				payload.Price.Amount,
-				payload.Price.Currency,
-			})
-		},
-	)
-
 	e := commonHTTP.NewEcho()
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
-	})
-
-	e.POST("/tickets-confirmation", func(c echo.Context) error {
-		var request TicketsConfirmationRequest
-		err := c.Bind(&request)
-		if err != nil {
-			return err
-		}
-
-		for _, ticket := range request.Tickets {
-			msg := message.NewMessage(watermill.NewUUID(), []byte(ticket))
-			if err := pub.Publish(issueReceiptTopic, msg); err != nil {
-				return err
-			}
-			if err := pub.Publish(appendToTrackerTopic, msg); err != nil {
-				return err
-			}
-		}
-
-		return c.NoContent(http.StatusOK)
 	})
 
 	e.POST("/tickets-status", func(c echo.Context) error {
@@ -230,6 +155,7 @@ func main() {
 					return err
 				}
 				msg := message.NewMessage(watermill.NewUUID(), payload)
+				msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
 				if err := pub.Publish(ticketBookingConfirmedTopic, msg); err != nil {
 					return err
 				}
@@ -247,6 +173,7 @@ func main() {
 					return err
 				}
 				msg := message.NewMessage(watermill.NewUUID(), payload)
+				msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
 				if err := pub.Publish(ticketBookingCanceledTopic, msg); err != nil {
 					return err
 				}
@@ -255,6 +182,84 @@ func main() {
 
 		return c.NoContent(http.StatusOK)
 	})
+
+	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	router.AddMiddleware(func(h message.HandlerFunc) message.HandlerFunc {
+		return func(msg *message.Message) ([]*message.Message, error) {
+			ctx := msg.Context()
+
+			reqCollerationID := msg.Metadata.Get("correlation_id")
+			if reqCollerationID == "" {
+				reqCollerationID = shortuuid.New()
+			}
+
+			ctx = log.ContextWithCorrelationID(ctx, reqCollerationID)
+
+			msg.SetContext(ctx)
+
+			return h(msg)
+		}
+	})
+	router.AddMiddleware(LoggingMiddleware())
+
+	router.AddNoPublisherHandler(
+		issueReceiptTopic,
+		ticketBookingConfirmedTopic,
+		receiptSub,
+		func(msg *message.Message) error {
+			var payload TicketBookingConfirmed
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return receiptsClient.IssueReceipt(msg.Context(), IssueReceiptRequest{
+				TicketID: payload.TicketID,
+				Price: PriceMoney{
+					Amount:   payload.Price.Amount,
+					Currency: payload.Price.Currency,
+				},
+			})
+		},
+	)
+
+	router.AddNoPublisherHandler(
+		appendToTrackerTopic,
+		ticketBookingConfirmedTopic,
+		spreadsheetSub,
+		func(msg *message.Message) error {
+			var payload TicketBookingConfirmed
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return spreadsheetsClient.AppendRow(msg.Context(), "tickets-to-print", []string{
+				payload.TicketID,
+				payload.CustomerEmail,
+				payload.Price.Amount,
+				payload.Price.Currency,
+			})
+		},
+	)
+
+	router.AddNoPublisherHandler(
+		"refund-spreadsheets",
+		ticketBookingCanceledTopic,
+		refundSpreadsheetSub,
+		func(msg *message.Message) error {
+			var payload TicketBookingCanceled
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return spreadsheetsClient.AppendRow(msg.Context(), "tickets-to-refund", []string{
+				payload.TicketID,
+				payload.CustomerEmail,
+				payload.Price.Amount,
+				payload.Price.Currency,
+			})
+		},
+	)
 
 	logrus.Info("Server starting...")
 
@@ -365,5 +370,20 @@ func LoggingMiddleware() func(h message.HandlerFunc) message.HandlerFunc {
 
 			return next(msg)
 		}
+	}
+}
+
+func CorrelationID(next message.HandlerFunc) message.HandlerFunc {
+	return func(msg *message.Message) ([]*message.Message, error) {
+		producedMessages, err := next(msg)
+
+		correlationID := msg.Metadata.Get("correlation_id")
+		logrus.WithField("correlation_id", correlationID).Info("Setting correlation ID for produced messages")
+		for _, producedMsg := range producedMessages {
+			ctx := log.ContextWithCorrelationID(producedMsg.Context(), correlationID)
+			producedMsg.SetContext(ctx)
+		}
+
+		return producedMessages, err
 	}
 }
