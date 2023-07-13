@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients/receipts"
@@ -23,8 +24,9 @@ import (
 )
 
 const (
-	issueReceiptTopic    = "issue-receipt"
-	appendToTrackerTopic = "append-to-tracker"
+	issueReceiptTopic           = "issue-receipt"
+	appendToTrackerTopic        = "append-to-tracker"
+	ticketBookingConfirmedTopic = "TicketBookingConfirmed"
 )
 
 type TicketsConfirmationRequest struct {
@@ -43,6 +45,23 @@ type Ticket struct {
 
 type TicketsStatusRequest struct {
 	Tickets []Ticket `json:"tickets"`
+}
+
+type Header struct {
+	ID          string    `json:"id"`
+	PublishedAt time.Time `json:"published_at"`
+}
+
+type PriceMoney struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+type TicketBookingConfirmed struct {
+	Header        Header     `json:"header"`
+	TicketID      string     `json:"ticket_id"`
+	CustomerEmail string     `json:"customer_email"`
+	Price         PriceMoney `json:"price"`
 }
 
 func main() {
@@ -91,18 +110,18 @@ func main() {
 
 	router.AddNoPublisherHandler(
 		issueReceiptTopic,
-		issueReceiptTopic,
+		ticketBookingConfirmedTopic,
 		receiptSub,
 		func(msg *message.Message) error {
-			var ticket Ticket
-			if err := json.Unmarshal(msg.Payload, &ticket); err != nil {
+			var payload TicketBookingConfirmed
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 				return err
 			}
 			return receiptsClient.IssueReceipt(context.Background(), IssueReceiptRequest{
-				TicketID: ticket.TicketID,
+				TicketID: payload.TicketID,
 				Price: Money{
-					Amount:   ticket.Price.Amount,
-					Currency: ticket.Price.Currency,
+					Amount:   payload.Price.Amount,
+					Currency: payload.Price.Currency,
 				},
 			})
 		},
@@ -110,15 +129,18 @@ func main() {
 
 	router.AddNoPublisherHandler(
 		appendToTrackerTopic,
-		appendToTrackerTopic,
+		ticketBookingConfirmedTopic,
 		spreadsheetSub,
 		func(msg *message.Message) error {
-			var payload Ticket
+			var payload TicketBookingConfirmed
 			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 				return err
 			}
 			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{
-				payload.TicketID, payload.CustomerEmail, payload.Price.Amount, payload.Price.Currency,
+				payload.TicketID,
+				payload.CustomerEmail,
+				payload.Price.Amount,
+				payload.Price.Currency,
 			})
 		},
 	)
@@ -157,15 +179,20 @@ func main() {
 		}
 
 		for _, ticket := range request.Tickets {
-			payload, err := json.Marshal(ticket)
+			payload, err := json.Marshal(TicketBookingConfirmed{
+				Header:        Header{ID: watermill.NewUUID(), PublishedAt: time.Now()},
+				TicketID:      ticket.TicketID,
+				CustomerEmail: ticket.CustomerEmail,
+				Price: PriceMoney{
+					Amount:   ticket.Price.Amount,
+					Currency: ticket.Price.Currency,
+				},
+			})
 			if err != nil {
 				return err
 			}
 			msg := message.NewMessage(watermill.NewUUID(), payload)
-			if err := pub.Publish(issueReceiptTopic, msg); err != nil {
-				return err
-			}
-			if err := pub.Publish(appendToTrackerTopic, msg); err != nil {
+			if err := pub.Publish(ticketBookingConfirmedTopic, msg); err != nil {
 				return err
 			}
 		}
