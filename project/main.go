@@ -27,6 +27,7 @@ const (
 	issueReceiptTopic           = "issue-receipt"
 	appendToTrackerTopic        = "append-to-tracker"
 	ticketBookingConfirmedTopic = "TicketBookingConfirmed"
+	ticketBookingCanceledTopic  = "TicketBookingCanceled"
 )
 
 type TicketsConfirmationRequest struct {
@@ -47,21 +48,28 @@ type TicketsStatusRequest struct {
 	Tickets []Ticket `json:"tickets"`
 }
 
-type Header struct {
+type EventHeader struct {
 	ID          string    `json:"id"`
 	PublishedAt time.Time `json:"published_at"`
 }
 
-type PriceMoney struct {
+type Money struct {
 	Amount   string `json:"amount"`
 	Currency string `json:"currency"`
 }
 
 type TicketBookingConfirmed struct {
-	Header        Header     `json:"header"`
-	TicketID      string     `json:"ticket_id"`
-	CustomerEmail string     `json:"customer_email"`
-	Price         PriceMoney `json:"price"`
+	Header        EventHeader `json:"header"`
+	TicketID      string      `json:"ticket_id"`
+	CustomerEmail string      `json:"customer_email"`
+	Price         Money       `json:"price"`
+}
+
+type TicketBookingCanceled struct {
+	Header        EventHeader `json:"header"`
+	TicketID      string      `json:"ticket_id"`
+	CustomerEmail string      `json:"customer_email"`
+	Price         Money       `json:"price"`
 }
 
 func main() {
@@ -103,6 +111,14 @@ func main() {
 		panic(err)
 	}
 
+	refundSpreadsheetSub, err := redisstream.NewSubscriber(redisstream.SubscriberConfig{
+		Client:        rdb,
+		ConsumerGroup: "refund-spreadsheets",
+	}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
 	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
 	if err != nil {
 		panic(err)
@@ -119,7 +135,7 @@ func main() {
 			}
 			return receiptsClient.IssueReceipt(context.Background(), IssueReceiptRequest{
 				TicketID: payload.TicketID,
-				Price: Money{
+				Price: PriceMoney{
 					Amount:   payload.Price.Amount,
 					Currency: payload.Price.Currency,
 				},
@@ -137,6 +153,24 @@ func main() {
 				return err
 			}
 			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{
+				payload.TicketID,
+				payload.CustomerEmail,
+				payload.Price.Amount,
+				payload.Price.Currency,
+			})
+		},
+	)
+
+	router.AddNoPublisherHandler(
+		"refund-spreadsheets",
+		ticketBookingCanceledTopic,
+		refundSpreadsheetSub,
+		func(msg *message.Message) error {
+			var payload TicketBookingCanceled
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-refund", []string{
 				payload.TicketID,
 				payload.CustomerEmail,
 				payload.Price.Amount,
@@ -179,21 +213,41 @@ func main() {
 		}
 
 		for _, ticket := range request.Tickets {
-			payload, err := json.Marshal(TicketBookingConfirmed{
-				Header:        Header{ID: watermill.NewUUID(), PublishedAt: time.Now()},
-				TicketID:      ticket.TicketID,
-				CustomerEmail: ticket.CustomerEmail,
-				Price: PriceMoney{
-					Amount:   ticket.Price.Amount,
-					Currency: ticket.Price.Currency,
-				},
-			})
-			if err != nil {
-				return err
-			}
-			msg := message.NewMessage(watermill.NewUUID(), payload)
-			if err := pub.Publish(ticketBookingConfirmedTopic, msg); err != nil {
-				return err
+			switch ticket.Status {
+			case "confirmed":
+				payload, err := json.Marshal(TicketBookingConfirmed{
+					Header:        EventHeader{ID: watermill.NewUUID(), PublishedAt: time.Now()},
+					TicketID:      ticket.TicketID,
+					CustomerEmail: ticket.CustomerEmail,
+					Price: Money{
+						Amount:   ticket.Price.Amount,
+						Currency: ticket.Price.Currency,
+					},
+				})
+				if err != nil {
+					return err
+				}
+				msg := message.NewMessage(watermill.NewUUID(), payload)
+				if err := pub.Publish(ticketBookingConfirmedTopic, msg); err != nil {
+					return err
+				}
+			case "canceled":
+				payload, err := json.Marshal(TicketBookingCanceled{
+					Header:        EventHeader{ID: watermill.NewUUID(), PublishedAt: time.Now()},
+					TicketID:      ticket.TicketID,
+					CustomerEmail: ticket.CustomerEmail,
+					Price: Money{
+						Amount:   ticket.Price.Amount,
+						Currency: ticket.Price.Currency,
+					},
+				})
+				if err != nil {
+					return err
+				}
+				msg := message.NewMessage(watermill.NewUUID(), payload)
+				if err := pub.Publish(ticketBookingCanceledTopic, msg); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -246,14 +300,14 @@ func NewReceiptsClient(clients *clients.Clients) ReceiptsClient {
 	}
 }
 
-type Money struct {
+type PriceMoney struct {
 	Amount   string
 	Currency string
 }
 
 type IssueReceiptRequest struct {
 	TicketID string
-	Price    Money
+	Price    PriceMoney
 }
 
 func (c ReceiptsClient) IssueReceipt(ctx context.Context, request IssueReceiptRequest) error {
