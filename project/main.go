@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -28,6 +29,20 @@ const (
 
 type TicketsConfirmationRequest struct {
 	Tickets []string `json:"tickets"`
+}
+
+type Ticket struct {
+	TicketID      string `json:"ticket_id"`
+	Status        string `json:"status"`
+	CustomerEmail string `json:"customer_email"`
+	Price         struct {
+		Amount   string `json:"amount"`
+		Currency string `json:"currency"`
+	} `json:"price"`
+}
+
+type TicketsStatusRequest struct {
+	Tickets []Ticket `json:"tickets"`
 }
 
 func main() {
@@ -79,7 +94,17 @@ func main() {
 		issueReceiptTopic,
 		receiptSub,
 		func(msg *message.Message) error {
-			return receiptsClient.IssueReceipt(context.Background(), string(msg.Payload))
+			var ticket Ticket
+			if err := json.Unmarshal(msg.Payload, &ticket); err != nil {
+				return err
+			}
+			return receiptsClient.IssueReceipt(context.Background(), IssueReceiptRequest{
+				TicketID: ticket.TicketID,
+				Price: Money{
+					Amount:   ticket.Price.Amount,
+					Currency: ticket.Price.Currency,
+				},
+			})
 		},
 	)
 
@@ -88,7 +113,13 @@ func main() {
 		appendToTrackerTopic,
 		spreadsheetSub,
 		func(msg *message.Message) error {
-			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{string(msg.Payload)})
+			var payload Ticket
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return spreadsheetsClient.AppendRow(context.Background(), "tickets-to-print", []string{
+				payload.TicketID, payload.CustomerEmail, payload.Price.Amount, payload.Price.Currency,
+			})
 		},
 	)
 
@@ -107,6 +138,30 @@ func main() {
 
 		for _, ticket := range request.Tickets {
 			msg := message.NewMessage(watermill.NewUUID(), []byte(ticket))
+			if err := pub.Publish(issueReceiptTopic, msg); err != nil {
+				return err
+			}
+			if err := pub.Publish(appendToTrackerTopic, msg); err != nil {
+				return err
+			}
+		}
+
+		return c.NoContent(http.StatusOK)
+	})
+
+	e.POST("/tickets-status", func(c echo.Context) error {
+		var request TicketsStatusRequest
+		err := c.Bind(&request)
+		if err != nil {
+			return err
+		}
+
+		for _, ticket := range request.Tickets {
+			payload, err := json.Marshal(ticket)
+			if err != nil {
+				return err
+			}
+			msg := message.NewMessage(watermill.NewUUID(), payload)
 			if err := pub.Publish(issueReceiptTopic, msg); err != nil {
 				return err
 			}
@@ -164,9 +219,23 @@ func NewReceiptsClient(clients *clients.Clients) ReceiptsClient {
 	}
 }
 
-func (c ReceiptsClient) IssueReceipt(ctx context.Context, ticketID string) error {
+type Money struct {
+	Amount   string
+	Currency string
+}
+
+type IssueReceiptRequest struct {
+	TicketID string
+	Price    Money
+}
+
+func (c ReceiptsClient) IssueReceipt(ctx context.Context, request IssueReceiptRequest) error {
 	body := receipts.PutReceiptsJSONRequestBody{
-		TicketId: ticketID,
+		TicketId: request.TicketID,
+		Price: receipts.Money{
+			MoneyAmount:   request.Price.Amount,
+			MoneyCurrency: request.Price.Currency,
+		},
 	}
 
 	receiptsResp, err := c.clients.Receipts.PutReceiptsWithResponse(ctx, body)
@@ -204,58 +273,4 @@ func (c SpreadsheetsClient) AppendRow(ctx context.Context, spreadsheetName strin
 	}
 
 	return nil
-}
-
-type Task int
-
-const (
-	TaskIssueReceipt Task = iota
-	TaskAppendToTracker
-)
-
-type Message struct {
-	Task     Task
-	TicketID string
-}
-
-type Worker struct {
-	queue              chan Message
-	receiptsClient     ReceiptsClient
-	spreadsheetsClient SpreadsheetsClient
-}
-
-func NewWorker(clients *clients.Clients) *Worker {
-	receiptsClient := NewReceiptsClient(clients)
-	spreadsheetsClient := NewSpreadsheetsClient(clients)
-	return &Worker{
-		queue:              make(chan Message, 100),
-		receiptsClient:     receiptsClient,
-		spreadsheetsClient: spreadsheetsClient,
-	}
-}
-
-func (w *Worker) Send(msg ...Message) {
-	for _, m := range msg {
-		w.queue <- m
-	}
-}
-
-func (w *Worker) Run() {
-	ctx := context.Background()
-	for msg := range w.queue {
-		switch msg.Task {
-		case TaskIssueReceipt:
-			// issue the receipt
-			if err := w.receiptsClient.IssueReceipt(ctx, msg.TicketID); err != nil {
-				logrus.WithError(err).Error("failed to add receipt for ticket")
-				w.Send(msg)
-			}
-		case TaskAppendToTracker:
-			// append to the tracker spreadsheet
-			if err := w.spreadsheetsClient.AppendRow(ctx, "tickets-to-print", []string{msg.TicketID}); err != nil {
-				logrus.WithError(err).Error("failed to append to tracker spreadsheet")
-				w.Send(msg)
-			}
-		}
-	}
 }
