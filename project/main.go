@@ -198,13 +198,21 @@ func main() {
 			}
 
 			ctx = log.ContextWithCorrelationID(ctx, reqCollerationID)
+			ctx = log.ToContext(ctx, logrus.WithFields(logrus.Fields{"correlation_id": reqCollerationID}))
 
 			msg.SetContext(ctx)
 
 			return h(msg)
 		}
 	})
-	router.AddMiddleware(LoggingMiddleware())
+	router.AddMiddleware(func(h message.HandlerFunc) message.HandlerFunc {
+		return func(msg *message.Message) ([]*message.Message, error) {
+			logger := log.FromContext(msg.Context())
+			logger.WithField("message_uuid", msg.UUID).Info("Handling a message")
+
+			return h(msg)
+		}
+	})
 
 	router.AddNoPublisherHandler(
 		issueReceiptTopic,
@@ -370,20 +378,5 @@ func LoggingMiddleware() func(h message.HandlerFunc) message.HandlerFunc {
 
 			return next(msg)
 		}
-	}
-}
-
-func CorrelationID(next message.HandlerFunc) message.HandlerFunc {
-	return func(msg *message.Message) ([]*message.Message, error) {
-		producedMessages, err := next(msg)
-
-		correlationID := msg.Metadata.Get("correlation_id")
-		logrus.WithField("correlation_id", correlationID).Info("Setting correlation ID for produced messages")
-		for _, producedMsg := range producedMessages {
-			ctx := log.ContextWithCorrelationID(producedMsg.Context(), correlationID)
-			producedMsg.SetContext(ctx)
-		}
-
-		return producedMessages, err
 	}
 }
