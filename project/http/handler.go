@@ -12,7 +12,9 @@ type Handler struct {
 	eventBus              *cqrs.EventBus
 	spreadsheetsAPIClient SpreadsheetsAPI
 	ticketsRepo           TicketsRepository
-	showsRepo             ShowsRepository
+
+	showsRepo          ShowsRepository
+	bookingsRepository BookingsRepository
 }
 
 type SpreadsheetsAPI interface {
