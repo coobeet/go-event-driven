@@ -1,3 +1,3 @@
-exercise_id = "86bb2f58-6cac-49d5-9c38-7a46a439b821"
-directory = "09-cqrs-events/03-handling-correlation-id"
+exercise_id = "9d36a050-953c-4127-87f4-fb8a3ff7ddcf"
+directory = "09-cqrs-events/05-event-handler"
 is_text_only = false
