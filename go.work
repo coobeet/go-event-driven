@@ -1,3 +1,0 @@
-go 1.20
-
-use ./09-cqrs-events/01-event-bus
