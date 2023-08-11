@@ -17,7 +17,7 @@ func (c *ReceiptsMock) IssueReceipt(ctx context.Context, request entities.IssueR
 	c.mock.Lock()
 	defer c.mock.Unlock()
 
-	c.IssuedReceipts[request.IdempotencyKey] = request
+	c.IssuedReceipts[request.TicketID] = request
 
 	return entities.IssueReceiptResponse{
 		ReceiptNumber: "mocked-receipt-number",
