@@ -8,6 +8,7 @@ require (
 	github.com/ThreeDotsLabs/watermill-redisstream v1.2.1
 	github.com/google/uuid v1.3.0
 	github.com/labstack/echo/v4 v4.11.1
+	github.com/lithammer/shortuuid v3.0.0+incompatible
 	github.com/lithammer/shortuuid/v3 v3.0.7
 	github.com/redis/go-redis/v9 v9.0.5
 	github.com/sirupsen/logrus v1.9.3
