@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	stdHTTP "net/http"
-	"os"
 
 	"tickets/db"
 	ticketsHttp "tickets/http"
@@ -37,11 +36,7 @@ func New(
 	spreadsheetsService event.SpreadsheetsAPI,
 	receiptsService event.ReceiptsService,
 ) Service {
-	db, err := sqlx.Open("postgres", os.Getenv("POSTGRES_URL"))
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
+	ticketsRepo := db.NewTicketsRepository(dbConn)
 
 	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
 
@@ -54,6 +49,7 @@ func New(
 	eventsHandler := event.NewHandler(
 		spreadsheetsService,
 		receiptsService,
+		ticketsRepo,
 	)
 
 	eventProcessorConfig := event.NewProcessorConfig(redisClient, watermillLogger)
