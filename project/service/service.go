@@ -4,11 +4,12 @@ import (
 	"context"
 	stdHTTP "net/http"
 
+	ticketsHttp "tickets/http"
+	"tickets/message"
+	"tickets/message/event"
+
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
-	ticketsHttp "github.com/coobeet/go-event-driven/project/http"
-	"github.com/coobeet/go-event-driven/project/message"
-	"github.com/coobeet/go-event-driven/project/message/event"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"

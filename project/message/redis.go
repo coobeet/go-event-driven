@@ -16,7 +16,7 @@ func NewRedisPublisher(rdb *redis.Client, watermillLogger watermill.LoggerAdapte
 	if err != nil {
 		panic(err)
 	}
-	pub = log.CorrelationPublisherDecorator{pub}
+	pub = log.CorrelationPublisherDecorator{Publisher: pub}
 
 	return pub
 }

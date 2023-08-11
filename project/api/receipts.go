@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"tickets/entities"
+
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients/receipts"
-	"github.com/coobeet/go-event-driven/project/entities"
 )
 
 type ReceiptsServiceClient struct {

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"tickets/entities"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/coobeet/go-event-driven/project/entities"
 	"github.com/labstack/echo/v4"
 )
 

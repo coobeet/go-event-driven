@@ -6,11 +6,12 @@ import (
 	"os"
 	"os/signal"
 
+	"tickets/api"
+	"tickets/message"
+	"tickets/service"
+
 	"github.com/ThreeDotsLabs/go-event-driven/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
-	"github.com/coobeet/go-event-driven/project/api"
-	"github.com/coobeet/go-event-driven/project/message"
-	"github.com/coobeet/go-event-driven/project/service"
 )
 
 func main() {

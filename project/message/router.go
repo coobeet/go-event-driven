@@ -3,11 +3,12 @@ package message
 import (
 	"encoding/json"
 
+	"tickets/entities"
+	"tickets/message/event"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/coobeet/go-event-driven/project/entities"
-	"github.com/coobeet/go-event-driven/project/message/event"
 	"github.com/redis/go-redis/v9"
 )
 

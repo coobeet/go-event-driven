@@ -3,8 +3,9 @@ package event
 import (
 	"context"
 
+	"tickets/entities"
+
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
-	"github.com/coobeet/go-event-driven/project/entities"
 )
 
 func (h Handler) CancelTicket(ctx context.Context, event entities.TicketBookingCanceled) error {

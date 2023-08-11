@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"tickets/entities"
+
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
-	"github.com/coobeet/go-event-driven/project/entities"
 )
 
 func (h Handler) IssueReceipt(ctx context.Context, event entities.TicketBookingConfirmed) error {

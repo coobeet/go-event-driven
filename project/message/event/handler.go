@@ -3,7 +3,7 @@ package event
 import (
 	"context"
 
-	"github.com/coobeet/go-event-driven/project/entities"
+	"tickets/entities"
 )
 
 type Handler struct {
