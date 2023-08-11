@@ -1,14 +1,11 @@
 package http
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"tickets/entities"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/labstack/echo/v4"
 )
 
@@ -34,24 +31,17 @@ func (h Handler) PostTicketsStatus(c echo.Context) error {
 	for _, ticket := range request.Tickets {
 		if ticket.Status == "confirmed" {
 			event := entities.TicketBookingConfirmed{
-				Header:        entities.NewEventHeader(),
+				Header: entities.NewEventHeader(),
+
 				TicketID:      ticket.TicketID,
-				CustomerEmail: ticket.CustomerEmail,
 				Price:         ticket.Price,
+				CustomerEmail: ticket.CustomerEmail,
+
+				BookingID: ticket.BookingID,
 			}
 
-			payload, err := json.Marshal(event)
-			if err != nil {
-				return err
-			}
-
-			msg := message.NewMessage(watermill.NewUUID(), payload)
-			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
-			msg.Metadata.Set("type", "TicketBookingConfirmed")
-
-			err = h.publisher.Publish("TicketBookingConfirmed", msg)
-			if err != nil {
-				return err
+			if err := h.eventBus.Publish(c.Request().Context(), event); err != nil {
+				return fmt.Errorf("failed to publish TicketBookingConfirmed event: %w", err)
 			}
 		} else if ticket.Status == "canceled" {
 			event := entities.TicketBookingCanceled{
@@ -61,18 +51,8 @@ func (h Handler) PostTicketsStatus(c echo.Context) error {
 				Price:         ticket.Price,
 			}
 
-			payload, err := json.Marshal(event)
-			if err != nil {
-				return err
-			}
-
-			msg := message.NewMessage(watermill.NewUUID(), payload)
-			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
-			msg.Metadata.Set("type", "TicketBookingCanceled")
-
-			err = h.publisher.Publish("TicketBookingCanceled", msg)
-			if err != nil {
-				return err
+			if err := h.eventBus.Publish(c.Request().Context(), event); err != nil {
+				return fmt.Errorf("failed to publish TicketBookingCanceled event: %w", err)
 			}
 		} else {
 			return fmt.Errorf("unknown ticket status: %s", ticket.Status)

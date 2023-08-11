@@ -4,11 +4,11 @@ import (
 	"net/http"
 
 	libHttp "github.com/ThreeDotsLabs/go-event-driven/common/http"
-	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/labstack/echo/v4"
 )
 
-func NewHttpRouter(publisher message.Publisher, spreadsheetsAPIClient SpreadsheetsAPI) *echo.Echo {
+func NewHttpRouter(eb *cqrs.EventBus, spreadsheetsAPIClient SpreadsheetsAPI) *echo.Echo {
 	e := libHttp.NewEcho()
 
 	e.GET("/health", func(c echo.Context) error {
@@ -16,7 +16,7 @@ func NewHttpRouter(publisher message.Publisher, spreadsheetsAPIClient Spreadshee
 	})
 
 	handler := Handler{
-		publisher:             publisher,
+		eventBus:              eb,
 		spreadsheetsAPIClient: spreadsheetsAPIClient,
 	}
 
