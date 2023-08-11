@@ -7,22 +7,22 @@ import (
 	"net/http"
 	"os"
 	"testing"
-	"time"
-
 	"tickets/api"
+	dbAdapters "tickets/db"
 	"tickets/entities"
 	"tickets/message"
 	"tickets/service"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/lithammer/shortuuid"
+	"github.com/lithammer/shortuuid/v3"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestComponent(t *testing.T) {
-	// place for your tests!
 	db, err := sqlx.Open("postgres", os.Getenv("POSTGRES_URL"))
 	if err != nil {
 		panic(err)
@@ -36,7 +36,8 @@ func TestComponent(t *testing.T) {
 	defer cancel()
 
 	spreadsheetsService := &api.SpreadsheetsMock{}
-	receiptsService := &api.ReceiptsMock{}
+	receiptsService := &api.ReceiptsMock{IssuedReceipts: map[string]entities.IssueReceiptRequest{}}
+	filesAPI := &api.FilesMock{}
 
 	go func() {
 		svc := service.New(
@@ -44,7 +45,7 @@ func TestComponent(t *testing.T) {
 			redisClient,
 			spreadsheetsService,
 			receiptsService,
-			nil,
+			filesAPI,
 		)
 		assert.NoError(t, svc.Run(ctx))
 	}()
@@ -62,10 +63,17 @@ func TestComponent(t *testing.T) {
 		BookingID: uuid.NewString(),
 	}
 
-	sendTicketsStatus(t, TicketsStatusRequest{Tickets: []TicketStatus{ticket}})
+	idempotencyKey := uuid.NewString()
+
+	// check idempotency
+	for i := 0; i < 3; i++ {
+		sendTicketsStatus(t, TicketsStatusRequest{Tickets: []TicketStatus{ticket}}, idempotencyKey)
+	}
 
 	assertReceiptForTicketIssued(t, receiptsService, ticket)
+	assertTicketPrinted(t, filesAPI, ticket)
 	assertRowToSheetAdded(t, spreadsheetsService, ticket, "tickets-to-print")
+	assertTicketStoredInRepository(t, db, ticket)
 
 	sendTicketsStatus(t, TicketsStatusRequest{Tickets: []TicketStatus{
 		{
@@ -73,29 +81,32 @@ func TestComponent(t *testing.T) {
 			Status:   "canceled",
 			Email:    ticket.Email,
 		},
-	}})
+	}}, uuid.NewString())
 
 	assertRowToSheetAdded(t, spreadsheetsService, ticket, "tickets-to-refund")
 }
 
-func waitForHttpServer(t *testing.T) {
-	t.Helper()
+func assertTicketStoredInRepository(t *testing.T, db *sqlx.DB, ticket TicketStatus) {
+	ticketsRepo := dbAdapters.NewTicketsRepository(db)
 
-	require.EventuallyWithT(
+	assert.Eventually(
 		t,
-		func(t *assert.CollectT) {
-			resp, err := http.Get("http://localhost:8080/health")
-			if !assert.NoError(t, err) {
-				return
+		func() bool {
+			tickets, err := ticketsRepo.FindAll(context.Background())
+			if err != nil {
+				return false
 			}
-			defer resp.Body.Close()
 
-			if assert.Less(t, resp.StatusCode, 300, "API not ready, http status: %d", resp.StatusCode) {
-				return
+			for _, t := range tickets {
+				if t.TicketID == ticket.TicketID {
+					return true
+				}
 			}
+
+			return false
 		},
-		time.Second*10,
-		time.Millisecond*50,
+		10*time.Second,
+		100*time.Millisecond,
 	)
 }
 
@@ -123,31 +134,43 @@ func assertRowToSheetAdded(t *testing.T, spreadsheetsService *api.SpreadsheetsMo
 	)
 }
 
+func assertTicketPrinted(t *testing.T, filesAPI *api.FilesMock, ticket TicketStatus) bool {
+	return assert.EventuallyWithT(
+		t,
+		func(t *assert.CollectT) {
+			content, err := filesAPI.DownloadFile(context.Background(), ticket.TicketID+"-ticket.html")
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			if assert.NotEmpty(t, content) {
+				return
+			}
+
+			assert.Contains(t, content, ticket.TicketID)
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
 func assertReceiptForTicketIssued(t *testing.T, receiptsService *api.ReceiptsMock, ticket TicketStatus) {
 	assert.EventuallyWithT(
 		t,
 		func(collectT *assert.CollectT) {
 			issuedReceipts := len(receiptsService.IssuedReceipts)
-			t.Log("issued receipts", issuedReceipts)
 
-			assert.Greater(collectT, issuedReceipts, 0, "no receipts issued")
+			assert.Equal(collectT, 1, issuedReceipts, "receipt for ticket %s not found", ticket.TicketID)
 		},
 		10*time.Second,
 		100*time.Millisecond,
 	)
 
-	var receipt entities.IssueReceiptRequest
-	var ok bool
-	for _, issuedReceipt := range receiptsService.IssuedReceipts {
-		if issuedReceipt.TicketID != ticket.TicketID {
-			continue
-		}
-		receipt = issuedReceipt
-		ok = true
-		break
-	}
-
+	receipt, ok := lo.Find(lo.Values(receiptsService.IssuedReceipts), func(r entities.IssueReceiptRequest) bool {
+		return r.TicketID == ticket.TicketID
+	})
 	require.Truef(t, ok, "receipt for ticket %s not found", ticket.TicketID)
+
 	assert.Equal(t, ticket.TicketID, receipt.TicketID)
 	assert.Equal(t, ticket.Price.Amount, receipt.Price.Amount)
 	assert.Equal(t, ticket.Price.Currency, receipt.Price.Currency)
@@ -170,7 +193,7 @@ type Money struct {
 	Currency string `json:"currency"`
 }
 
-func sendTicketsStatus(t *testing.T, req TicketsStatusRequest) {
+func sendTicketsStatus(t *testing.T, req TicketsStatusRequest, idempotencyKey string) {
 	t.Helper()
 
 	payload, err := json.Marshal(req)
@@ -191,9 +214,31 @@ func sendTicketsStatus(t *testing.T, req TicketsStatusRequest) {
 	require.NoError(t, err)
 
 	httpReq.Header.Set("Correlation-ID", correlationID)
+	httpReq.Header.Set("Idempotency-Key", idempotencyKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func waitForHttpServer(t *testing.T) {
+	t.Helper()
+
+	require.EventuallyWithT(
+		t,
+		func(t *assert.CollectT) {
+			resp, err := http.Get("http://localhost:8080/health")
+			if !assert.NoError(t, err) {
+				return
+			}
+			defer resp.Body.Close()
+
+			if assert.Less(t, resp.StatusCode, 300, "API not ready, http status: %d", resp.StatusCode) {
+				return
+			}
+		},
+		time.Second*10,
+		time.Millisecond*50,
+	)
 }

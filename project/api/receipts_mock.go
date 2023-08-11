@@ -2,23 +2,25 @@ package api
 
 import (
 	"context"
-	"time"
-
+	"sync"
 	"tickets/entities"
-
-	"github.com/ThreeDotsLabs/watermill"
+	"time"
 )
 
 type ReceiptsMock struct {
-	// todo: implement me
-	IssuedReceipts []entities.IssueReceiptRequest
+	mock sync.Mutex
+
+	IssuedReceipts map[string]entities.IssueReceiptRequest
 }
 
-func (m *ReceiptsMock) IssueReceipt(ctx context.Context, request entities.IssueReceiptRequest) (entities.IssueReceiptResponse, error) {
-	m.IssuedReceipts = append(m.IssuedReceipts, request)
+func (c *ReceiptsMock) IssueReceipt(ctx context.Context, request entities.IssueReceiptRequest) (entities.IssueReceiptResponse, error) {
+	c.mock.Lock()
+	defer c.mock.Unlock()
+
+	c.IssuedReceipts[request.IdempotencyKey] = request
 
 	return entities.IssueReceiptResponse{
-		ReceiptNumber: watermill.NewUUID(),
+		ReceiptNumber: "mocked-receipt-number",
 		IssuedAt:      time.Now(),
 	}, nil
 }
