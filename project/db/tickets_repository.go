@@ -20,6 +20,28 @@ func NewTicketsRepository(db *sqlx.DB) TicketsRepository {
 	return TicketsRepository{db: db}
 }
 
+func (t TicketsRepository) FindAll(ctx context.Context) ([]entities.Ticket, error) {
+	var returnTickets []entities.Ticket
+
+	err := t.db.SelectContext(
+		ctx,
+		&returnTickets, `
+			SELECT 
+				ticket_id,
+				price_amount as "price.amount", 
+				price_currency as "price.currency",
+				customer_email
+			FROM 
+			    tickets
+		`,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return returnTickets, nil
+}
+
 func (t TicketsRepository) Add(ctx context.Context, ticket entities.Ticket) error {
 	_, err := t.db.NamedExecContext(
 		ctx,
