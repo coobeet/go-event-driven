@@ -49,7 +49,8 @@ func (t TicketsRepository) Add(ctx context.Context, ticket entities.Ticket) erro
 		INSERT INTO 
     		tickets (ticket_id, price_amount, price_currency, customer_email) 
 		VALUES 
-		    (:ticket_id, :price.amount, :price.currency, :customer_email)`,
+		    (:ticket_id, :price.amount, :price.currency, :customer_email)
+		ON CONFLICT DO NOTHING`,
 		ticket,
 	)
 	if err != nil {
