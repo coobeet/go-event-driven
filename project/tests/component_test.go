@@ -44,6 +44,7 @@ func TestComponent(t *testing.T) {
 			redisClient,
 			spreadsheetsService,
 			receiptsService,
+			nil,
 		)
 		assert.NoError(t, svc.Run(ctx))
 	}()
