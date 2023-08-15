@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"tickets/entities"
+	"tickets/message/event"
+	"tickets/message/outbox"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -43,6 +45,22 @@ func (b BookingsRepository) AddBooking(ctx context.Context, booking entities.Boo
 		`, booking)
 	if err != nil {
 		return fmt.Errorf("could not add booking: %w", err)
+	}
+
+	outboxPublisher, err := outbox.NewPublisherForDb(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("could not create event bus: %w", err)
+	}
+
+	err = event.NewBus(outboxPublisher).Publish(ctx, entities.BookingMade{
+		Header:          entities.NewEventHeader(),
+		BookingID:       booking.BookingID,
+		NumberOfTickets: booking.NumberOfTickets,
+		CustomerEmail:   booking.CustomerEmail,
+		ShowId:          booking.ShowID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not publish event: %w", err)
 	}
 
 	return nil
