@@ -32,13 +32,18 @@ func NewWatermillRouter(
 
 	eventProcessor.AddHandlers(
 		cqrs.NewEventHandler(
+			"BookPlaceInDeadNation",
+			eventHandler.BookPlaceInDeadNation,
+		),
+		cqrs.NewEventHandler(
 			"AppendToTracker",
 			eventHandler.AppendToTracker,
 		),
 		cqrs.NewEventHandler(
 			"TicketRefundToSheet",
 			eventHandler.TicketRefundToSheet,
-		), cqrs.NewEventHandler(
+		),
+		cqrs.NewEventHandler(
 			"IssueReceipt",
 			eventHandler.IssueReceipt,
 		),

@@ -9,6 +9,7 @@ import (
 )
 
 type Handler struct {
+	deadNationAPI       DeadNationAPI
 	spreadsheetsService SpreadsheetsAPI
 	receiptsService     ReceiptsService
 	filesAPI            FilesAPI
@@ -18,6 +19,7 @@ type Handler struct {
 }
 
 func NewHandler(
+	deadNationAPI DeadNationAPI,
 	spreadsheetsService SpreadsheetsAPI,
 	receiptsService ReceiptsService,
 	filesAPI FilesAPI,
@@ -27,6 +29,9 @@ func NewHandler(
 ) Handler {
 	if eventBus == nil {
 		panic("missing eventBus")
+	}
+	if deadNationAPI == nil {
+		panic("missing deadNationAPI")
 	}
 	if spreadsheetsService == nil {
 		panic("missing spreadsheetsService")
@@ -48,6 +53,7 @@ func NewHandler(
 	}
 
 	return Handler{
+		deadNationAPI:       deadNationAPI,
 		spreadsheetsService: spreadsheetsService,
 		receiptsService:     receiptsService,
 		filesAPI:            filesAPI,
@@ -76,4 +82,8 @@ type TicketsRepository interface {
 
 type ShowsRepository interface {
 	ShowByID(ctx context.Context, showID uuid.UUID) (entities.Show, error)
+}
+
+type DeadNationAPI interface {
+	BookInDeadNation(ctx context.Context, request entities.DeadNationBooking) error
 }

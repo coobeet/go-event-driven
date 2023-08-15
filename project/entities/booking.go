@@ -11,3 +11,10 @@ type Booking struct {
 
 	CustomerEmail string `json:"customer_email" db:"customer_email"`
 }
+
+type DeadNationBooking struct {
+	BookingID         uuid.UUID
+	NumberOfTickets   int
+	CustomerEmail     string
+	DeadNationEventID uuid.UUID
+}
