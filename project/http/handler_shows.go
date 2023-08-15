@@ -18,7 +18,7 @@ func (h Handler) PostShows(c echo.Context) error {
 
 	show.ShowId = uuid.New()
 
-	if err := h.showsRepo.AddShow(c.Request().Context(), show); err != nil {
+	if err := h.showsRepository.AddShow(c.Request().Context(), show); err != nil {
 		return fmt.Errorf("failed to add show: %w", err)
 	}
 

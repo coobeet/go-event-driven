@@ -6,6 +6,7 @@ import (
 
 	"tickets/entities"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -60,6 +61,21 @@ func (h Handler) PostTicketsStatus(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func (h Handler) PutTicketRefund(c echo.Context) error {
+	ticketID := c.Param("ticket_id")
+
+	event := entities.RefundTicket{
+		Header:   entities.NewEventHeaderWithIdempotencyKey(uuid.NewString()),
+		TicketID: ticketID,
+	}
+
+	if err := h.commandBus.Send(c.Request().Context(), event); err != nil {
+		return fmt.Errorf("failed to send RefundTicket command: %w", err)
+	}
+
+	return c.NoContent(http.StatusAccepted)
 }
 
 func (h Handler) GetTickets(c echo.Context) error {

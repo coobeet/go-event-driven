@@ -7,6 +7,7 @@ import (
 	"tickets/db"
 	ticketsHttp "tickets/http"
 	"tickets/message"
+	"tickets/message/command"
 	"tickets/message/event"
 	"tickets/message/outbox"
 
@@ -60,6 +61,8 @@ func New(
 		eventBus,
 	)
 
+	commandBus := command.NewBus(redisPublisher, command.NewBusConfig(watermillLogger))
+
 	postgresSubscriber := outbox.NewPostgresSubscriber(dbConn.DB, watermillLogger)
 	eventProcessorConfig := event.NewProcessorConfig(redisClient, watermillLogger)
 
@@ -73,6 +76,7 @@ func New(
 
 	echoRouter := ticketsHttp.NewHttpRouter(
 		eventBus,
+		commandBus,
 		spreadsheetsService,
 		ticketsRepo,
 		showsRepo,
