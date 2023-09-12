@@ -13,6 +13,7 @@ func NewHttpRouter(
 	commandBus *cqrs.CommandBus,
 	spreadsheetsAPIClient SpreadsheetsAPI,
 	ticketsRepository TicketsRepository,
+	opsBookingReadModel OpsBookingReadModel,
 	showsRepository ShowsRepository,
 	bookingsRepository BookingsRepository,
 ) *echo.Echo {
@@ -27,6 +28,7 @@ func NewHttpRouter(
 		commandBus:            commandBus,
 		spreadsheetsAPIClient: spreadsheetsAPIClient,
 		ticketsRepo:           ticketsRepository,
+		opsBookingReadModel:   opsBookingReadModel,
 		showsRepository:       showsRepository,
 		bookingsRepository:    bookingsRepository,
 	}
@@ -38,6 +40,9 @@ func NewHttpRouter(
 	e.POST("/book-tickets", handler.PostBookTickets)
 
 	e.POST("/shows", handler.PostShows)
+
+	e.GET("/ops/bookings", handler.GetOpsTickets)
+	e.GET("/ops/bookings/:id", handler.GetOpsTicket)
 
 	return e
 }

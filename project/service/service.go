@@ -96,6 +96,7 @@ func New(
 		commandBus,
 		spreadsheetsService,
 		ticketsRepo,
+		OpsBookingReadModel,
 		showsRepo,
 		bookingsRepository,
 	)

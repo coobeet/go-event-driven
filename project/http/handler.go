@@ -14,8 +14,9 @@ type Handler struct {
 	spreadsheetsAPIClient SpreadsheetsAPI
 	ticketsRepo           TicketsRepository
 
-	showsRepository    ShowsRepository
-	bookingsRepository BookingsRepository
+	opsBookingReadModel OpsBookingReadModel
+	showsRepository     ShowsRepository
+	bookingsRepository  BookingsRepository
 }
 
 type SpreadsheetsAPI interface {
@@ -30,4 +31,9 @@ type ShowsRepository interface {
 	AddShow(ctx context.Context, show entities.Show) error
 	AllShows(ctx context.Context) ([]entities.Show, error)
 	ShowByID(ctx context.Context, showID uuid.UUID) (entities.Show, error)
+}
+
+type OpsBookingReadModel interface {
+	AllReservations() ([]entities.OpsBooking, error)
+	ReservationReadModel(ctx context.Context, id string) (entities.OpsBooking, error)
 }
