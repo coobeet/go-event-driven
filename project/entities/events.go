@@ -59,6 +59,15 @@ type TicketPrinted struct {
 	FileName string `json:"file_name"`
 }
 
+type TicketReceiptIssued struct {
+	Header EventHeader `json:"header"`
+
+	TicketID      string `json:"ticket_id"`
+	ReceiptNumber string `json:"receipt_number"`
+
+	IssuedAt time.Time `json:"issued_at"`
+}
+
 type BookingMade struct {
 	Header EventHeader `json:"header"`
 

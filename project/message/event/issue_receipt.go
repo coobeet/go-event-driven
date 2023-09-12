@@ -17,9 +17,19 @@ func (h Handler) IssueReceipt(ctx context.Context, event *entities.TicketBooking
 		Price:    event.Price,
 	}
 
-	_, err := h.receiptsService.IssueReceipt(ctx, request)
+	response, err := h.receiptsService.IssueReceipt(ctx, request)
 	if err != nil {
 		return fmt.Errorf("failed to issue receipt: %w", err)
+	}
+
+	err = h.eventBus.Publish(ctx, &entities.TicketReceiptIssued{
+		Header:        entities.NewEventHeader(),
+		TicketID:      event.TicketID,
+		ReceiptNumber: response.ReceiptNumber,
+		IssuedAt:      response.IssuedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to publish ticket receipt issued event: %w", err)
 	}
 
 	return nil
