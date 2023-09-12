@@ -15,6 +15,11 @@ func InitializeDatabaseSchema(db *sqlx.DB) error {
 			customer_email VARCHAR(255) NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS read_model_ops_bookings (
+			booking_id UUID PRIMARY KEY,
+			payload JSONB NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS shows (
 			show_id UUID PRIMARY KEY,
 			dead_nation_id UUID NOT NULL,
