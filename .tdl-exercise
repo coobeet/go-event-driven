@@ -1,3 +1,3 @@
-exercise_id = "b0caea29-74c9-47fa-8e39-db89f3ec4c78"
-directory = "14-message-ordering/01-ordering"
-is_text_only = true
+exercise_id = "f517adc1-4e7b-4310-a4ab-3ccb717010b3"
+directory = "14-message-ordering/02-one-topic"
+is_text_only = false
