@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
@@ -23,7 +25,7 @@ func NewProcessorConfig(
 			)
 		},
 		GenerateSubscribeTopic: func(params cqrs.CommandProcessorGenerateSubscribeTopicParams) (string, error) {
-			return params.CommandName, nil
+			return fmt.Sprintf("commands.%s", params.CommandName), nil
 		},
 		Marshaler: cqrs.JSONMarshaler{
 			GenerateName: cqrs.StructName,
@@ -35,7 +37,7 @@ func NewProcessorConfig(
 func NewBusConfig(watermillLogger watermill.LoggerAdapter) cqrs.CommandBusConfig {
 	return cqrs.CommandBusConfig{
 		GeneratePublishTopic: func(params cqrs.CommandBusGeneratePublishTopicParams) (string, error) {
-			return params.CommandName, nil
+			return fmt.Sprintf("commands.%s", params.CommandName), nil
 		},
 		Marshaler: cqrs.JSONMarshaler{
 			GenerateName: cqrs.StructName,
