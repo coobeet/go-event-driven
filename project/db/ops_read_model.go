@@ -24,9 +24,25 @@ func NewOpsBookingReadModel(db *sqlx.DB) OpsBookingReadModel {
 	return OpsBookingReadModel{db: db}
 }
 
-func (r OpsBookingReadModel) AllReservations() ([]entities.OpsBooking, error) {
+func (r OpsBookingReadModel) AllReservations(receiptIssueDateFilter string) ([]entities.OpsBooking, error) {
 	query := "SELECT payload FROM read_model_ops_bookings"
 	var quaryArgs []any
+
+	if receiptIssueDateFilter != "" {
+		// please keep in mind that this is not the most efficient way to do it
+		query += fmt.Sprintf(`
+			WHERE booking_id IN (
+				SELECT booking_id FROM (
+					SELECT booking_id, 
+						DATE(jsonb_path_query(payload, '$.tickets.*.receipt_issued_at')::text) as receipt_issued_at 
+					FROM 
+						read_model_ops_bookings
+				) bookings_within_date 
+				WHERE receipt_issued_at = $1
+			)
+		`)
+		quaryArgs = append(quaryArgs, receiptIssueDateFilter)
+	}
 
 	rows, err := r.db.Query(query, quaryArgs...)
 	if err != nil {
