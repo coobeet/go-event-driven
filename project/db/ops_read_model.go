@@ -9,19 +9,22 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
+	"github.com/ThreeDotsLabs/watermill/components/cqrs"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
 
 type OpsBookingReadModel struct {
-	db *sqlx.DB
+	db       *sqlx.DB
+	eventBus *cqrs.EventBus
 }
 
-func NewOpsBookingReadModel(db *sqlx.DB) OpsBookingReadModel {
+func NewOpsBookingReadModel(db *sqlx.DB, eventBus *cqrs.EventBus) OpsBookingReadModel {
 	if db == nil {
 		panic("db is nil")
 	}
 
-	return OpsBookingReadModel{db: db}
+	return OpsBookingReadModel{db: db, eventBus: eventBus}
 }
 
 func (r OpsBookingReadModel) AllReservations(receiptIssueDateFilter string) ([]entities.OpsBooking, error) {
@@ -173,7 +176,10 @@ func (r OpsBookingReadModel) createReadModel(
 		return fmt.Errorf("could not create read model: %w", err)
 	}
 
-	return nil
+	return r.eventBus.Publish(ctx, &entities.InternalOpsReadModelUpdated{
+		Header:    entities.NewEventHeader(),
+		BookingID: booking.BookingID,
+	})
 }
 
 func (r OpsBookingReadModel) updateBookingReadModel(
@@ -181,7 +187,7 @@ func (r OpsBookingReadModel) updateBookingReadModel(
 	bookingID string,
 	updateFunc func(ticket entities.OpsBooking) (entities.OpsBooking, error),
 ) (err error) {
-	return updateInTx(
+	if err := updateInTx(
 		ctx,
 		r.db,
 		sql.LevelRepeatableRead,
@@ -201,7 +207,14 @@ func (r OpsBookingReadModel) updateBookingReadModel(
 
 			return r.updateReadModel(ctx, tx, updatedRm)
 		},
-	)
+	); err != nil {
+		return err
+	}
+
+	return r.eventBus.Publish(ctx, &entities.InternalOpsReadModelUpdated{
+		Header:    entities.NewEventHeader(),
+		BookingID: uuid.MustParse(bookingID),
+	})
 }
 
 func (r OpsBookingReadModel) updateTicketInBookingReadModel(

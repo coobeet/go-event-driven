@@ -26,7 +26,8 @@ func init() {
 }
 
 type Service struct {
-	db              *sqlx.DB
+	db *sqlx.DB
+
 	watermillRouter *watermillMessage.Router
 	echoRouter      *echo.Echo
 }
@@ -45,12 +46,6 @@ func New(
 	filesAPI event.FilesAPI,
 	paymentsService command.PaymentsService,
 ) Service {
-	ticketsRepo := db.NewTicketsRepository(dbConn)
-	OpsBookingReadModel := db.NewOpsBookingReadModel(dbConn)
-	showsRepo := db.NewShowsRepository(dbConn)
-	bookingsRepository := db.NewBookingsRepository(dbConn)
-	dataLake := db.NewDataLake(dbConn)
-
 	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
 
 	var redisPublisher watermillMessage.Publisher
@@ -58,8 +53,13 @@ func New(
 	redisPublisher = log.CorrelationPublisherDecorator{Publisher: redisPublisher}
 
 	redisSubscriber := message.NewRedisSubscriber(redisClient, watermillLogger)
-
 	eventBus := event.NewBus(redisPublisher)
+
+	ticketsRepo := db.NewTicketsRepository(dbConn)
+	OpsBookingReadModel := db.NewOpsBookingReadModel(dbConn, eventBus)
+	showsRepo := db.NewShowsRepository(dbConn)
+	bookingsRepository := db.NewBookingsRepository(dbConn)
+	dataLake := db.NewDataLake(dbConn)
 
 	eventsHandler := event.NewHandler(
 		deadNationAPI,

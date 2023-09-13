@@ -8,12 +8,7 @@ import (
 func NewBus(pub message.Publisher) *cqrs.EventBus {
 	eventBus, err := cqrs.NewEventBusWithConfig(
 		pub,
-		cqrs.EventBusConfig{
-			GeneratePublishTopic: func(params cqrs.GenerateEventPublishTopicParams) (string, error) {
-				return "events", nil
-			},
-			Marshaler: marshaler,
-		},
+		newEventBusConfig(),
 	)
 	if err != nil {
 		panic(err)
