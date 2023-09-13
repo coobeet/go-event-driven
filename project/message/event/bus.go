@@ -1,8 +1,6 @@
 package event
 
 import (
-	"fmt"
-
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -12,7 +10,7 @@ func NewBus(pub message.Publisher) *cqrs.EventBus {
 		pub,
 		cqrs.EventBusConfig{
 			GeneratePublishTopic: func(params cqrs.GenerateEventPublishTopicParams) (string, error) {
-				return fmt.Sprintf("events.%s", params.EventName), nil
+				return "events", nil
 			},
 			Marshaler: marshaler,
 		},

@@ -22,7 +22,7 @@ func NewProcessorConfig(redisClient *redis.Client, watermillLogger watermill.Log
 		SubscriberConstructor: func(params cqrs.EventProcessorSubscriberConstructorParams) (message.Subscriber, error) {
 			return redisstream.NewSubscriber(redisstream.SubscriberConfig{
 				Client:        redisClient,
-				ConsumerGroup: "svc-tickets." + params.HandlerName,
+				ConsumerGroup: "svc-tickets.events." + params.HandlerName,
 			}, watermillLogger)
 		},
 		Marshaler: marshaler,

@@ -56,6 +56,8 @@ func New(
 	redisPublisher = message.NewRedisPublisher(redisClient, watermillLogger)
 	redisPublisher = log.CorrelationPublisherDecorator{Publisher: redisPublisher}
 
+	redisSubscriber := message.NewRedisSubscriber(redisClient, watermillLogger)
+
 	eventBus := event.NewBus(redisPublisher)
 
 	eventsHandler := event.NewHandler(
@@ -83,6 +85,7 @@ func New(
 	watermillRouter := message.NewWatermillRouter(
 		postgresSubscriber,
 		redisPublisher,
+		redisSubscriber,
 		eventProcessorConfig,
 		eventsHandler,
 		commandProcessorConfig,

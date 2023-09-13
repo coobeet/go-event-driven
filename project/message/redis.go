@@ -16,9 +16,20 @@ func NewRedisPublisher(rdb *redis.Client, watermillLogger watermill.LoggerAdapte
 	if err != nil {
 		panic(err)
 	}
-	pub = log.CorrelationPublisherDecorator{Publisher: pub}
+	pub = log.CorrelationPublisherDecorator{pub}
 
 	return pub
+}
+
+func NewRedisSubscriber(rdb *redis.Client, watermillLogger watermill.LoggerAdapter) message.Subscriber {
+	sub, err := redisstream.NewSubscriber(redisstream.SubscriberConfig{
+		Client: rdb,
+	}, watermillLogger)
+	if err != nil {
+		panic(err)
+	}
+
+	return sub
 }
 
 func NewRedisClient(addr string) *redis.Client {

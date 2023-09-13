@@ -1,6 +1,7 @@
 package message
 
 import (
+	"fmt"
 	"tickets/db"
 	"tickets/message/command"
 	"tickets/message/event"
@@ -13,7 +14,8 @@ import (
 
 func NewWatermillRouter(
 	postgresSubscriber message.Subscriber,
-	publisher message.Publisher,
+	redisPublisher message.Publisher,
+	redisSubscriber message.Subscriber,
 	eventProcessorConfig cqrs.EventProcessorConfig,
 	eventHandler event.Handler,
 	commandProcessorConfig cqrs.CommandProcessorConfig,
@@ -28,7 +30,7 @@ func NewWatermillRouter(
 
 	useMiddlewares(router, watermillLogger)
 
-	outbox.AddForwarderHandler(postgresSubscriber, publisher, router, watermillLogger)
+	outbox.AddForwarderHandler(postgresSubscriber, redisPublisher, router, watermillLogger)
 
 	eventProcessor, err := cqrs.NewEventProcessorWithConfig(router, eventProcessorConfig)
 	if err != nil {
@@ -64,7 +66,6 @@ func NewWatermillRouter(
 			"RemoveCanceledTicket",
 			eventHandler.RemoveCanceledTicket,
 		),
-
 		cqrs.NewEventHandler(
 			"ops_read_model.OnBookingMade",
 			opsReadModel.OnBookingMade,
@@ -87,7 +88,10 @@ func NewWatermillRouter(
 		),
 	)
 
-	commandProcessor, err := cqrs.NewCommandProcessorWithConfig(router, commandProcessorConfig)
+	commandProcessor, err := cqrs.NewCommandProcessorWithConfig(
+		router,
+		commandProcessorConfig,
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -97,6 +101,20 @@ func NewWatermillRouter(
 			"TicketRefund",
 			commandsHandler.RefundTicket,
 		),
+	)
+
+	router.AddNoPublisherHandler(
+		"events_splitter",
+		"events",
+		redisSubscriber,
+		func(msg *message.Message) error {
+			eventName := eventProcessorConfig.Marshaler.NameFromMessage(msg)
+			if eventName == "" {
+				return fmt.Errorf("cannot get event name from message")
+			}
+
+			return redisPublisher.Publish("events."+eventName, msg)
+		},
 	)
 
 	return router
