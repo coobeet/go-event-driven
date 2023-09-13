@@ -10,13 +10,15 @@ import (
 	"tickets/message/command"
 	"tickets/message/event"
 	"tickets/message/outbox"
-	"tickets/migrations"
+	"time"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -41,6 +43,24 @@ type ReceiptService interface {
 	command.ReceiptsService
 }
 
+func recordMetrics() {
+	go func() {
+		for {
+			veryImportantCounter.Inc()
+			time.Sleep(time.Millisecond * 100)
+		}
+	}()
+}
+
+var (
+	veryImportantCounter = promauto.NewCounter(prometheus.CounterOpts{
+		// metric will be named tickets_very_important_counter_total
+		Namespace: "tickets",
+		Name:      "very_important_counter_total",
+		Help:      "Total number of very important things processed",
+	})
+)
+
 func New(
 	dbConn *sqlx.DB,
 	redisClient *redis.Client,
@@ -51,6 +71,8 @@ func New(
 	paymentsService command.PaymentsService,
 ) Service {
 	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
+
+	recordMetrics()
 
 	var redisPublisher watermillMessage.Publisher
 	redisPublisher = message.NewRedisPublisher(redisClient, watermillLogger)
@@ -125,12 +147,6 @@ func (s Service) Run(
 	if err := db.InitializeDatabaseSchema(s.db); err != nil {
 		return fmt.Errorf("failed to initialize database schema: %w", err)
 	}
-
-	go func() {
-		if err := migrations.MigrateReadModel(ctx, s.dataLake, s.opsReadModel); err != nil {
-			log.FromContext(ctx).Errorf("failed to migrate read model: %v", err)
-		}
-	}()
 
 	errgrp, ctx := errgroup.WithContext(ctx)
 
