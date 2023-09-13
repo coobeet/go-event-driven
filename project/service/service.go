@@ -10,17 +10,16 @@ import (
 	"tickets/message/command"
 	"tickets/message/event"
 	"tickets/message/outbox"
-	"time"
+	"tickets/observability"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,30 +35,14 @@ type Service struct {
 
 	watermillRouter *watermillMessage.Router
 	echoRouter      *echo.Echo
+
+	traceProvider *tracesdk.TracerProvider
 }
 
 type ReceiptService interface {
 	event.ReceiptsService
 	command.ReceiptsService
 }
-
-func recordMetrics() {
-	go func() {
-		for {
-			veryImportantCounter.Inc()
-			time.Sleep(time.Millisecond * 100)
-		}
-	}()
-}
-
-var (
-	veryImportantCounter = promauto.NewCounter(prometheus.CounterOpts{
-		// metric will be named tickets_very_important_counter_total
-		Namespace: "tickets",
-		Name:      "very_important_counter_total",
-		Help:      "Total number of very important things processed",
-	})
-)
 
 func New(
 	dbConn *sqlx.DB,
@@ -70,13 +53,15 @@ func New(
 	filesAPI event.FilesAPI,
 	paymentsService command.PaymentsService,
 ) Service {
-	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
+	traceProvider := observability.ConfigureTraceProvider()
 
-	recordMetrics()
+	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
 
 	var redisPublisher watermillMessage.Publisher
 	redisPublisher = message.NewRedisPublisher(redisClient, watermillLogger)
+
 	redisPublisher = log.CorrelationPublisherDecorator{Publisher: redisPublisher}
+	redisPublisher = observability.TracingPublisherDecorator{redisPublisher}
 
 	redisSubscriber := message.NewRedisSubscriber(redisClient, watermillLogger)
 	eventBus := event.NewBus(redisPublisher)
@@ -138,6 +123,7 @@ func New(
 		OpsBookingReadModel,
 		watermillRouter,
 		echoRouter,
+		traceProvider,
 	}
 }
 
@@ -170,6 +156,11 @@ func (s Service) Run(
 	errgrp.Go(func() error {
 		<-ctx.Done()
 		return s.echoRouter.Shutdown(context.Background())
+	})
+
+	errgrp.Go(func() error {
+		<-ctx.Done()
+		return s.traceProvider.Shutdown(context.Background())
 	})
 
 	return errgrp.Wait()

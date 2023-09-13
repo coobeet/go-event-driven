@@ -7,6 +7,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/components/cqrs"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 func NewHttpRouter(
@@ -19,6 +20,8 @@ func NewHttpRouter(
 	bookingsRepository BookingsRepository,
 ) *echo.Echo {
 	e := libHttp.NewEcho()
+
+	e.Use(otelecho.Middleware("tickets"))
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
