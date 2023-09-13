@@ -85,7 +85,7 @@ func (b BookingsRepository) AddBooking(ctx context.Context, booking entities.Boo
 		return fmt.Errorf("could not create event bus: %w", err)
 	}
 
-	err = event.NewBus(outboxPublisher).Publish(ctx, entities.BookingMade{
+	err = event.NewBus(outboxPublisher).Publish(ctx, entities.BookingMade_v1{
 		Header:          entities.NewEventHeader(),
 		BookingID:       booking.BookingID,
 		NumberOfTickets: booking.NumberOfTickets,

@@ -8,7 +8,7 @@ import (
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 )
 
-func (h Handler) PrintTicket(ctx context.Context, event *entities.TicketBookingConfirmed) error {
+func (h Handler) PrintTicket(ctx context.Context, event *entities.TicketBookingConfirmed_v1) error {
 	log.FromContext(ctx).Info("Printing ticket")
 
 	ticketHTML := `
@@ -30,7 +30,7 @@ func (h Handler) PrintTicket(ctx context.Context, event *entities.TicketBookingC
 		return fmt.Errorf("failed to upload ticket file: %w", err)
 	}
 
-	err = h.eventBus.Publish(ctx, &entities.TicketPrinted{
+	err = h.eventBus.Publish(ctx, &entities.TicketPrinted_v1{
 		Header:   entities.NewEventHeader(),
 		TicketID: event.TicketID,
 		FileName: ticketFile,

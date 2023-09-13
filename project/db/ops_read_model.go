@@ -72,7 +72,7 @@ func (r OpsBookingReadModel) ReservationReadModel(ctx context.Context, bookingID
 	return r.findReadModelByBookingID(ctx, bookingID, r.db)
 }
 
-func (r OpsBookingReadModel) OnBookingMade(ctx context.Context, bookingMade *entities.BookingMade) error {
+func (r OpsBookingReadModel) OnBookingMade(ctx context.Context, bookingMade *entities.BookingMade_v1) error {
 	// this is the first event that should arrive, so we create the read model
 	err := r.createReadModel(ctx, entities.OpsBooking{
 		BookingID:  bookingMade.BookingID,
@@ -87,7 +87,7 @@ func (r OpsBookingReadModel) OnBookingMade(ctx context.Context, bookingMade *ent
 	return nil
 }
 
-func (r OpsBookingReadModel) OnTicketBookingConfirmed(ctx context.Context, event *entities.TicketBookingConfirmed) error {
+func (r OpsBookingReadModel) OnTicketBookingConfirmed(ctx context.Context, event *entities.TicketBookingConfirmed_v1) error {
 	return r.updateBookingReadModel(
 		ctx,
 		event.BookingID,
@@ -114,7 +114,7 @@ func (r OpsBookingReadModel) OnTicketBookingConfirmed(ctx context.Context, event
 	)
 }
 
-func (r OpsBookingReadModel) OnTicketRefunded(ctx context.Context, event *entities.TicketRefunded) error {
+func (r OpsBookingReadModel) OnTicketRefunded(ctx context.Context, event *entities.TicketRefunded_v1) error {
 	return r.updateTicketInBookingReadModel(
 		ctx,
 		event.TicketID,
@@ -126,7 +126,7 @@ func (r OpsBookingReadModel) OnTicketRefunded(ctx context.Context, event *entiti
 	)
 }
 
-func (r OpsBookingReadModel) OnTicketPrinted(ctx context.Context, event *entities.TicketPrinted) error {
+func (r OpsBookingReadModel) OnTicketPrinted(ctx context.Context, event *entities.TicketPrinted_v1) error {
 	return r.updateTicketInBookingReadModel(
 		ctx,
 		event.TicketID,
@@ -139,7 +139,7 @@ func (r OpsBookingReadModel) OnTicketPrinted(ctx context.Context, event *entitie
 	)
 }
 
-func (r OpsBookingReadModel) OnTicketReceiptIssued(ctx context.Context, issued *entities.TicketReceiptIssued) error {
+func (r OpsBookingReadModel) OnTicketReceiptIssued(ctx context.Context, issued *entities.TicketReceiptIssued_v1) error {
 	return r.updateTicketInBookingReadModel(
 		ctx,
 		issued.TicketID,
