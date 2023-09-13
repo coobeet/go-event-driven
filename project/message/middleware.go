@@ -8,7 +8,39 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/lithammer/shortuuid/v3"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
+)
+
+var (
+	messagesProcessedCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "messages",
+			Name:      "processed_total",
+			Help:      "The total number of processed messages",
+		},
+		[]string{"topic", "handler"},
+	)
+
+	messagesProcessingFailedCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "messages",
+			Name:      "processing_failed_total",
+			Help:      "The total number of message processing failures",
+		},
+		[]string{"topic", "handler"},
+	)
+
+	messagesProcessingDuration = promauto.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace:  "messages",
+			Name:       "processing_duration_seconds",
+			Help:       "The total time spent processing messages",
+			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		},
+		[]string{"topic", "handler"},
+	)
 )
 
 func useMiddlewares(router *message.Router, watermillLogger watermill.LoggerAdapter) {
@@ -21,6 +53,28 @@ func useMiddlewares(router *message.Router, watermillLogger watermill.LoggerAdap
 		Multiplier:      2,
 		Logger:          watermillLogger,
 	}.Middleware)
+
+	router.AddMiddleware(func(h message.HandlerFunc) message.HandlerFunc {
+		return func(msg *message.Message) (events []*message.Message, err error) {
+			start := time.Now()
+
+			topic := message.SubscribeTopicFromCtx(msg.Context())
+			handler := message.HandlerNameFromCtx(msg.Context())
+
+			labels := prometheus.Labels{"topic": topic, "handler": handler}
+
+			messagesProcessedCounter.With(labels).Inc()
+
+			msgs, err := h(msg)
+			if err != nil {
+				messagesProcessingFailedCounter.With(labels).Inc()
+			}
+
+			messagesProcessingDuration.With(labels).Observe(time.Since(start).Seconds())
+
+			return msgs, err
+		}
+	})
 
 	router.AddMiddleware(func(h message.HandlerFunc) message.HandlerFunc {
 		return func(msg *message.Message) (events []*message.Message, err error) {
