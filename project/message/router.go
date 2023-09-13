@@ -141,10 +141,12 @@ func NewWatermillRouter(
 
 			return dataLake.StoreEvent(
 				msg.Context(),
-				event.Header.ID,
-				event.Header,
-				eventName,
-				msg.Payload,
+				entities.DataLakeEvent{
+					EventID:      event.Header.ID,
+					PublishedAt:  event.Header.PublishedAt,
+					EventName:    eventName,
+					EventPayload: msg.Payload,
+				},
 			)
 		},
 	)

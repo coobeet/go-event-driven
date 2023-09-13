@@ -10,6 +10,7 @@ import (
 	"tickets/message/command"
 	"tickets/message/event"
 	"tickets/message/outbox"
+	"tickets/migrations"
 
 	"github.com/ThreeDotsLabs/go-event-driven/common/log"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
@@ -27,6 +28,9 @@ func init() {
 
 type Service struct {
 	db *sqlx.DB
+
+	dataLake     db.DataLake
+	opsReadModel db.OpsBookingReadModel
 
 	watermillRouter *watermillMessage.Router
 	echoRouter      *echo.Echo
@@ -108,6 +112,8 @@ func New(
 
 	return Service{
 		dbConn,
+		dataLake,
+		OpsBookingReadModel,
 		watermillRouter,
 		echoRouter,
 	}
@@ -119,6 +125,12 @@ func (s Service) Run(
 	if err := db.InitializeDatabaseSchema(s.db); err != nil {
 		return fmt.Errorf("failed to initialize database schema: %w", err)
 	}
+
+	go func() {
+		if err := migrations.MigrateReadModel(ctx, s.dataLake, s.opsReadModel); err != nil {
+			log.FromContext(ctx).Errorf("failed to migrate read model: %v", err)
+		}
+	}()
 
 	errgrp, ctx := errgroup.WithContext(ctx)
 

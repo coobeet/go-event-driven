@@ -24,18 +24,16 @@ func NewDataLake(db *sqlx.DB) DataLake {
 
 func (s DataLake) StoreEvent(
 	ctx context.Context,
-	eventID string,
-	eventHeader entities.EventHeader,
-	eventName string,
-	payload []byte,
+	dataLakeEvent entities.DataLakeEvent,
 ) error {
-	_, err := s.db.ExecContext(
+	_, err := s.db.NamedExecContext(
 		ctx,
-		`INSERT INTO events (event_id, published_at, event_name, event_payload) VALUES ($1, $2, $3, $4)`,
-		eventID,
-		eventHeader.PublishedAt,
-		eventName,
-		payload,
+		`
+			INSERT INTO 
+			    events (event_id, published_at, event_name, event_payload) 
+			VALUES 
+			    (:event_id, :published_at, :event_name, :event_payload)`,
+		dataLakeEvent,
 	)
 	var postgresError *pq.Error
 	if errors.As(err, &postgresError) && postgresError.Code.Name() == "unique_violation" {
@@ -43,8 +41,18 @@ func (s DataLake) StoreEvent(
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("could not store %s event in data lake: %w", eventID, err)
+		return fmt.Errorf("could not store %s event in data lake: %w", dataLakeEvent.EventID, err)
 	}
 
 	return nil
+}
+
+func (s DataLake) GetEvents(ctx context.Context) ([]entities.DataLakeEvent, error) {
+	var events []entities.DataLakeEvent
+	err := s.db.SelectContext(ctx, &events, "SELECT * FROM events ORDER BY published_at ASC")
+	if err != nil {
+		return nil, fmt.Errorf("could not get events from data lake: %w", err)
+	}
+
+	return events, nil
 }
