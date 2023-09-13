@@ -39,6 +39,13 @@ func InitializeDatabaseSchema(db *sqlx.DB) error {
 			customer_email VARCHAR(255) NOT NULL,
 			FOREIGN KEY (show_id) REFERENCES shows(show_id)
 		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			event_id UUID PRIMARY KEY,
+			published_at TIMESTAMP NOT NULL,
+			event_name VARCHAR(255) NOT NULL,
+			event_payload JSONB NOT NULL
+		);
 	`)
 	if err != nil {
 		return fmt.Errorf("could not initialize database schema: %w", err)

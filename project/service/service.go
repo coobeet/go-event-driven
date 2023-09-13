@@ -49,6 +49,7 @@ func New(
 	OpsBookingReadModel := db.NewOpsBookingReadModel(dbConn)
 	showsRepo := db.NewShowsRepository(dbConn)
 	bookingsRepository := db.NewBookingsRepository(dbConn)
+	dataLake := db.NewDataLake(dbConn)
 
 	watermillLogger := log.NewWatermill(log.FromContext(context.Background()))
 
@@ -91,6 +92,7 @@ func New(
 		commandProcessorConfig,
 		commandsHandler,
 		OpsBookingReadModel,
+		dataLake,
 		watermillLogger,
 	)
 

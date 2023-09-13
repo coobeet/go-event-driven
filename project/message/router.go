@@ -3,6 +3,7 @@ package message
 import (
 	"fmt"
 	"tickets/db"
+	"tickets/entities"
 	"tickets/message/command"
 	"tickets/message/event"
 	"tickets/message/outbox"
@@ -21,6 +22,7 @@ func NewWatermillRouter(
 	commandProcessorConfig cqrs.CommandProcessorConfig,
 	commandsHandler command.Handler,
 	opsReadModel db.OpsBookingReadModel,
+	dataLake db.DataLake,
 	watermillLogger watermill.LoggerAdapter,
 ) *message.Router {
 	router, err := message.NewRouter(message.RouterConfig{}, watermillLogger)
@@ -114,6 +116,36 @@ func NewWatermillRouter(
 			}
 
 			return redisPublisher.Publish("events."+eventName, msg)
+		},
+	)
+
+	router.AddNoPublisherHandler(
+		"store_to_data_lake",
+		"events",
+		redisSubscriber,
+		func(msg *message.Message) error {
+			eventName := eventProcessorConfig.Marshaler.NameFromMessage(msg)
+			if eventName == "" {
+				return fmt.Errorf("cannot get event name from message")
+			}
+
+			// we just need to unmarshal event header, rest is stored as is
+			type Event struct {
+				Header entities.EventHeader `json:"header"`
+			}
+
+			var event Event
+			if err := eventProcessorConfig.Marshaler.Unmarshal(msg, &event); err != nil {
+				return fmt.Errorf("cannot unmarshal event: %w", err)
+			}
+
+			return dataLake.StoreEvent(
+				msg.Context(),
+				event.Header.ID,
+				event.Header,
+				eventName,
+				msg.Payload,
+			)
 		},
 	)
 
